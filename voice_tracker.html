@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Голосовой Трекер Расходов</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 1rem;
+    }
+    button {
+      font-size: 1.2rem;
+      padding: 0.7rem 1.5rem;
+      cursor: pointer;
+    }
+    .result, .parsed, .error {
+      margin-top: 1rem;
+      padding: 0.5rem;
+      border-radius: 4px;
+    }
+    .result { background: #e0f7fa; }
+    .parsed { background: #e8f5e9; }
+    .error { background: #ffebee; color: #c62828; }
+  </style>
+</head>
+<body>
+  <h2>🎙️ Голосовой Трекер Расходов</h2>
+  <button id="speak-btn">🎤 Говорить</button>
+  <div class="result" id="transcript"></div>
+  <div class="parsed" id="parsed"></div>
+  <div class="error" id="status"></div>
+
+  <script>
+    const speakBtn = document.getElementById('speak-btn');
+    const result = document.getElementById('transcript');
+    const status = document.getElementById('status');
+
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'ru-RU';
+
+    speakBtn.addEventListener('click', () => {
+      recognition.start();
+    });
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.toLowerCase().trim();
+      result.textContent = `Распознано: ${transcript}`;
+
+      const parsedString = smartParse(transcript);
+
+      if (parsedString) {
+        status.innerHTML = `<span style="color: green;">✅ Готово для отправки: ${parsedString}</span>`;
+
+        const [type, category, amount, comment] = parsedString.split(',').map(item => item.trim());
+
+        fetch('https://hook.eu2.make.com/vyp7mmyr3f9hxhkv9cu2aoxmnlh06uo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: type,
+            category: category,
+            amount: amount,
+            comment: comment
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          status.innerHTML += `<br><span style="color: blue;">✅ Отправлено: ${data.message || 'успешно'}</span>`;
+        })
+        .catch(error => {
+          status.innerHTML += `<br><span style="color: red;">❌ Ошибка отправки: ${error}</span>`;
+        });
+
+      } else {
+        status.innerHTML = `<span style="color: red;">⚠️ Формат должен быть: "Тип, категория, сумма евро, комментарий"</span>`;
+      }
+    };
+
+    recognition.onerror = (event) => {
+      status.innerHTML = `<span style="color: red;">Ошибка: ${event.error}</span>`;
+    };
+
+    function smartParse(text) {
+      const words = text.split(' ');
+      let type = '', category = '', amount = '', comment = '';
+
+      for (let i = 0; i < words.length; i++) {
+        if (!amount && /\d+/.test(words[i])) {
+          amount = words[i].replace(/[^\d]/g, '');
+          type = words[i - 2] || 'расход';
+          category = words[i - 1] || '';
+          comment = words.slice(i + 1).join(' ');
+          break;
+        }
+      }
+
+      if (type && category && amount) {
+        return `${type}, ${category}, ${amount}, ${comment || '-'}`;
+      }
+
+      return null;
+    }
+  </script>
+</body>
+</html>
